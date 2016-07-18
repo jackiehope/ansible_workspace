@@ -1,0 +1,17 @@
+---
+#using this playbook to modify hostname and /etc/hosts
+- hosts: 127.0.0.1
+  #gather_facts: True remote_user: jackie
+  become: yes
+  become_user: root
+  vars:
+    new_hostname: ansible.test.node
+  tasks:
+  - name: change hostname
+    hostname: name={{ new_hostname }}
+  - name: replace the hostname in /etc/hosts don't forget using backrefs
+    lineinfile:
+      dest: /etc/hosts
+      regexp: '^({{ ansible_all_ipv4_addresses[0] }})\s+(.*)$'
+      line: '{{ ansible_all_ipv4_addresses[0] }} {{ new_hostname }}'
+      #backrefs: yes
