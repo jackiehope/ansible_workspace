@@ -1,0 +1,36 @@
+---
+- hosts: kvm-host
+  gather_facts: false
+  vars:
+    mem_size: 10
+    cpu_num: 8
+    vmname: openstack-rdo2
+  tasks:
+    #如果对应的xml已经存在，virt difine的时候不会进行修改，所以要先进行检测
+    - shell: test -f /etc/libvirt/qemu/{{ vmname }}.xml
+      register: xml_result
+      ignore_errors: True
+    - name: get vm info if vm exist
+      shell: virsh dominfo {{ vmname }} 
+      when: xml_result|success
+    - fail: msg="{{ vmname }} has already been defined,please check out"
+      when: xml_result|success
+
+    - shell: test -f /var/lib/libvirt/images/{{ vmname }}.qcow2
+      register: img_result
+      ignore_errors: True
+    - fail: msg="{{ vmname }}.qcow2 has already exists"
+      when: img_result|success
+
+    - name: cp img
+      shell: cd /var/lib/libvirt/images && cp centos7-mini.qcow2 {{ vmname }}.qcow2
+    - name: define vm
+      virt: name={{ vmname }}
+            command=define
+            xml="{{ lookup('template', 'centos7.j2') }}"
+            uri=qemu:///system
+    - name: start vm
+      virt: name={{ vmname }} state=running uri=qemu:///system
+
+    - name: get vnc port 
+      command: virsh vncdisplay {{ vmname }}
