@@ -1,0 +1,29 @@
+--- 
+  #把vm的第二块磁盘vdb设置为pv,创建vg=vg,创建lv=opt,最后把/dev/vg/opt挂载到/opt目录下， 
+- hosts: all 
+  #在ansible2.2中利用lvol可以直接创建vg 
+  vars: 
+    ansible_ssh_pass: sdfsdf 
+  tasks: 
+  - name: create vg 
+    lvg: vg=vg  pvs=/dev/vdb 
+  - name: create lv  
+    lvol: vg=vg  size=+100%FREE lv=opt 
+ 
+  - name: mkfs.ext4 
+    shell: mkfs.ext4 /dev/vg/opt 
+  - name: check opt 
+    shell: test -d /opt 
+    register: dir_chk 
+  - name: create opt 
+    command: mkdir /opt 
+    when: dir_chk|failed 
+ 
+  - name: mount lvs 
+    mount: 
+      name: /opt 
+      src: /dev/vg/opt 
+      fstype: ext4 
+      state: present
+  - name: check mount
+    shell: mount -a
