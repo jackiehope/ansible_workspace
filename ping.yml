@@ -6,4 +6,4 @@
 #      private: no
   tasks:
   - name: ping hosts
-    shell: hostname
+    debug: msg={{ ansible_hostname }} 
