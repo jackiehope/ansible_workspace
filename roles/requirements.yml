@@ -1,0 +1,4 @@
+#github
+- src: https://github.com/Tendrl/tendrl-ansible.git
+  version: master
+  name: tendrl
