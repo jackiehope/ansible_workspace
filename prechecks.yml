@@ -1,0 +1,107 @@
+---
+# A simple playbook with Tendrl installation pre checks as listed in:
+# https://tendrl.atlassian.net/browse/TEN-257
+
+- hosts: localhost
+  connection: local
+  tasks:
+    # For dig lookup module[1] to work (dig lookup is used later in this
+    # playbook), you need to have python dns module[2] installed[3] on ansible
+    # control machine (the local machine where you run ansible).
+    # [1] https://docs.ansible.com/ansible/latest/playbooks_lookups.html#the-dns-lookup-dig
+    # [2] http://www.dnspython.org/
+    # [3] Fedora package: python2-dns, RHEL 7 package: python-dns
+    # This check is here to provide more clear error message when the module
+    # is missing.
+    - name: Check that python dns is installed on ansible control machine
+      command: python2 -c 'import dns'
+      changed_when: False
+
+#
+# Check hw requirements first, so far for *Tendrl Server* only.
+#
+
+- hosts: tendrl-server
+  tasks:
+    # Based on:
+    #
+    # > The Node hosting tendrl-api/central_store should have minimum 12
+    # > GB of memory and 4 VCPUs (or equivalent)(due to alerts, logs
+    # > being stored on this node)
+    #
+    # From https://github.com/Tendrl/documentation/wiki/Tendrl-release-v1.5.0-(install-doc)
+    - assert:
+        that:
+          - ansible_memtotal_mb >= 12000
+          - ansible_processor_vcpus >= 4
+
+#
+# General checks applicable to all machines.
+#
+
+- hosts: all
+  user: root
+  # become: yes
+  tasks:
+
+    # example of the transforamtion: "7.10.123" -> "10"
+    - name: Extract minor version number from full ansible_distribution_version
+      set_fact:
+        distribution_minor_version: "{{ ansible_distribution_version|regex_replace('[0-9]\\.([0-9]+).*', '\\1') }}"
+
+    - name: Check that we run on CentOS or Red Hat Enterprise Linux >= 7.3
+      assert:
+        that:
+          - ansible_distribution == "CentOS" or ansible_distribution == "RedHat"
+          - ansible_distribution_major_version == '7'
+          - distribution_minor_version|int >= 3
+
+    # Checking that NTP is configured. Based on RHEL 7 *System Administrators
+    # Guide*.
+
+    - name: Run timedatectl to see if NTP is enabled and synchronized
+      command: timedatectl
+      changed_when: False
+      register: timedatectl_run
+
+    - name: Check that NTP is enabled
+      assert:
+        that:
+          - '"NTP enabled: yes" in timedatectl_run.stdout'
+
+    - name: Check that NTP is synchronized
+      assert:
+        that:
+          - '"NTP synchronized: yes" in timedatectl_run.stdout'
+
+    # Check that machine-id is unique on each machine. The implementation is
+    # not very efficient (linear check on each machine ... o(n^2)), but assert
+    # can't be performed locally based on facts from each remote host. On the
+    # brigh side: machines with non unique machine-id will be marked as failed.
+
+    - name: Check that machine-id on this machine is unique
+      assert:
+        that:
+          - ansible_hostname == hostvars[item]['ansible_hostname'] or ansible_machine_id != hostvars[item]['ansible_machine_id']
+      with_items: "{{ groups['all'] }}"
+
+    # Check that hostnames are reachable and available via dns
+
+    # Note that the dns lookup is performed on the ansible control machine (as
+    # all ansible lookup plugins are executed locally).
+    - name: Check that fqdn of the host is available via dns
+      assert:
+        that:
+          - lookup('dig', ansible_fqdn) != 'NXDOMAIN'
+
+    # This check doesn't use assert, but expects that getent tool ends with
+    # nonzero error code when the translation can't be done, so that ansible
+    # would consider such state as an failure anyway by default.
+    # And again, the implementation is not very efficient (linear check on
+    # each machine ... o(n^2)), but here we don't have any other choice: we
+    # have to make sure that on each machine, we can get an ip address of all
+    # the others to be sure that the dns is configured right.
+    - name: Check that the host can get an ip address for all the others
+      command: getent hosts "{{ hostvars[item]['ansible_fqdn'] }}"
+      changed_when: False
+      with_items: "{{ groups['all'] }}"
