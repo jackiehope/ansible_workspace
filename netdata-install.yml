@@ -2,4 +2,4 @@
 - hosts: phy
   tasks:
   - name: install netdata with curl
-    shell: bash <(curl -Ss https://my-netdata.io/kickstart.sh)
+    shell: bash <(curl -Ss https://my-netdata.io/kickstart-static64.sh)
